@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"    # same major version AudioRelay bundles
+      - name: Lint shell installers
+        run: shellcheck -S warning installers/macos/*.sh installers/linux/*.sh build.sh package.sh
+      - name: Parse-check PowerShell installers
+        shell: pwsh
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem installers/windows/*.ps1) {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs)
+            foreach ($e in $errs) { Write-Host "$($f.Name): $($e.Message) at line $($e.Extent.StartLineNumber)"; $bad++ }
+          }
+          if ($bad) { exit 1 }
+      - name: Build and unit-test
+        run: |
+          ./build.sh
+          javac -cp build/classes -d build/test test/ArgsTest.java
+          java -cp build/classes:build/test ArgsTest
+      - name: Package
+        run: ./package.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/*
+
+  release:
+    # Only tag pushes publish. This is the only job with write access.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create the GitHub release
+      id-token: write        # build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: "dist/*.jar, dist/*.zip"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Download the zip for your OS and see the README for install steps. SHA-256 checksums: SHA256SUMS.txt. Verify provenance: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
