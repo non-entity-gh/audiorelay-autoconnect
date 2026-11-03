@@ -67,4 +67,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Download the zip for your OS and see the README for install steps. SHA-256 checksums: SHA256SUMS.txt. Verify provenance: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+        run: |
+          printf '%s\n' \
+            "Download the zip for your OS and follow the README install steps." \
+            "" \
+            "SHA-256 checksums are in SHA256SUMS.txt. Verify where a file was built with:" \
+            "gh attestation verify FILE --repo $GITHUB_REPOSITORY" > notes.md
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file notes.md
