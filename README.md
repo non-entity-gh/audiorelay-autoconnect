@@ -118,6 +118,25 @@ Do this on the computer that **receives** audio (the one using the Player tab). 
 of the computer running the AudioRelay **server**. Giving that computer a fixed/reserved IP in your router helps.
 
 ### Windows
+
+**One step (downloads AudioRelay and the mod):** [`Install-AudioRelay-AutoConnect.ps1`](scripts/Install-AudioRelay-AutoConnect.ps1)
+installs AudioRelay 0.27.5 from audiorelay.net, then the latest release of this mod, in one go. It's handy for a new
+PC or for going back from the 1.0 alpha.
+
+1. Download the script: open [this link](https://raw.githubusercontent.com/non-entity-gh/audiorelay-autoconnect/main/scripts/Install-AudioRelay-AutoConnect.ps1),
+   press <kbd>Ctrl</kbd>+<kbd>S</kbd>, and save it to your Downloads folder.
+2. Open PowerShell in Downloads and run it with your server's IP:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\Install-AudioRelay-AutoConnect.ps1 -Server 192.168.1.50
+   ```
+   - It asks before closing a running AudioRelay, and you'll get an admin prompt for each installer.
+   - The mod zip is checked against the release's `SHA256SUMS.txt` before anything runs. The AudioRelay
+     installer's digital signature is shown, and you're asked before it runs if it isn't validly signed.
+   - Add `-SkipAudioRelay` to only install or update the mod (e.g. after an AudioRelay update).
+
+Like any script that downloads and installs software, read it before running it. It's short.
+
+**Or install just the mod from the zip:**
 1. Extract `audiorelay-autoconnect-windows.zip` (right-click > *Extract All*). Don't run it from inside the zip.
 2. Double-click **`Install.bat`**, approve the admin prompt (AudioRelay lives in Program Files), and enter the server's IP.
 3. If AudioRelay isn't already set to launch when Windows starts, the installer offers to turn on AudioRelay's own
@@ -260,5 +279,6 @@ used only to say what this works with. AudioRelay's terms may not permit modifyi
 for how you use this. Provided as-is, without warranty.
 
 ## Credits
-Created by an AudioRelay user, with the reverse-engineering, code and testing done together with
-Anthropic's Claude (AI). Everything is open for review. If you spot a problem, please open an issue.
+Created by [@non-entity-gh](https://github.com/non-entity-gh), an AudioRelay user who got tired of clicking Connect
+every morning, with the reverse-engineering, code and testing done together with Anthropic's Claude (AI).
+Everything is open for review. If you spot a problem, please open an issue.
