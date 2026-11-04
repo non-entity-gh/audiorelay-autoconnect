@@ -20,6 +20,22 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
 > **This software was written and tested with the help of AI, and it runs inside another program on your computer.**
 > Please read [Before you install: a word of caution](#before-you-install-a-word-of-caution) first.
 
+## Contents
+
+- [Why this project exists](#why-this-project-exists)
+  - [How small the official change would be](#how-small-the-official-change-would-be)
+- [Before you install: a word of caution](#before-you-install-a-word-of-caution)
+- [Install](#install): [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [After AudioRelay updates](#after-audiorelay-updates)
+- [Options](#options)
+  - [Manual setup (any platform)](#manual-setup-any-platform)
+- [Compatibility](#compatibility)
+- [Security & transparency](#security--transparency)
+- [How it works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Building](#building)
+- [Legal](#legal)
+- [Credits](#credits)
+
 ---
 
 ## Why this project exists
