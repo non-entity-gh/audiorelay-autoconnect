@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="220" viewBox="0 0 420 220" role="img" aria-label="Zero Interaction: You can keep your devices connected without ever looking at the app again. No more start-up routine!">
+  <title>Zero Interaction: You can keep your devices connected without ever looking at the app again. No more start-up routine!</title>
+  <rect x="0" y="0" width="420" height="220" rx="14" fill="#0b1120"/>
+  <rect x="1" y="1" width="418" height="218" rx="13" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+  <svg x="30" y="32" width="26" height="26" viewBox="0 0 24 24">
+  <g fill="none" stroke="#5aa2f7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12 C4.8 6.8 8.2 4.8 12 4.8 C15.8 4.8 19.2 6.8 22 12 C19.2 17.2 15.8 19.2 12 19.2 C8.2 19.2 4.8 17.2 2 12 Z"/>
+    <circle cx="12" cy="12" r="3.4" fill="#5aa2f7"/>
+    <line x1="3.5" y1="3.5" x2="20.5" y2="20.5" stroke="#0f172a" stroke-width="5.5"/>
+    <line x1="3.5" y1="3.5" x2="20.5" y2="20.5"/>
+  </g>
+  </svg>
+  <text x="32" y="96" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#f8fafc">Zero Interaction</text>
+  <text x="32" y="130" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.5" fill="#94a3b8"><tspan x="32" dy="0">You can keep your devices connected</tspan><tspan x="32" dy="28">without ever looking at the app again.</tspan><tspan x="32" dy="28">No more start-up routine!</tspan></text>
+</svg>

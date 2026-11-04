@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="220" viewBox="0 0 420 220" role="img" aria-label="Auto Reconnect: Stay connected forever by automatically connecting every time the app launches.">
+  <title>Auto Reconnect: Stay connected forever by automatically connecting every time the app launches.</title>
+  <rect x="0" y="0" width="420" height="220" rx="14" fill="#0b1120"/>
+  <rect x="1" y="1" width="418" height="218" rx="13" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+  <svg x="30" y="32" width="26" height="26" viewBox="0 0 24 24">
+  <g transform="rotate(45 12 12)" fill="none" stroke="#5aa2f7" stroke-width="2.4" stroke-linecap="round">
+    <path d="M4.76 10.06 A7.5 7.5 0 0 1 17.75 7.18"/><path d="M19.24 13.94 A7.5 7.5 0 0 1 6.25 16.82"/>
+    <path d="M19.74 5.51 L19.80 9.63 L15.75 8.85 Z" fill="#5aa2f7" stroke-linejoin="round" stroke-width="1"/><path d="M4.26 18.49 L4.20 14.37 L8.25 15.15 Z" fill="#5aa2f7" stroke-linejoin="round" stroke-width="1"/>
+  </g>
+  </svg>
+  <text x="32" y="96" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#f8fafc">Auto Reconnect</text>
+  <text x="32" y="130" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.5" fill="#94a3b8"><tspan x="32" dy="0">Stay connected forever by automatically</tspan><tspan x="32" dy="28">connecting every time the app launches.</tspan></text>
+</svg>

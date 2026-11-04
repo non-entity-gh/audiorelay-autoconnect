@@ -1,5 +1,10 @@
 # AudioRelay Auto-Connect
 
+<p align="center">
+  <img src="assets/card-auto-reconnect.svg" width="49%" alt="Auto Reconnect: Stay connected forever by automatically connecting every time the app launches.">
+  <img src="assets/card-zero-interaction.svg" width="49%" alt="Zero Interaction: You can keep your devices connected without ever looking at the app again. No more start-up routine!">
+</p>
+
 **Make the [AudioRelay](https://audiorelay.net) desktop Player connect to your server automatically, on Windows, macOS and Linux.**
 
 AudioRelay is great, but every time the Player computer starts you have to open the window, go to the
