@@ -73,4 +73,9 @@ jobs:
             "" \
             "SHA-256 checksums are in SHA256SUMS.txt. Verify where a file was built with:" \
             "gh attestation verify FILE --repo $GITHUB_REPOSITORY" > notes.md
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file notes.md
+          # The release may already exist if it was created on github.com (which also creates the tag)
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file notes.md
+          fi
