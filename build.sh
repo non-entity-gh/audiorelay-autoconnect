@@ -9,7 +9,7 @@ javac -nowarn -source 17 -target 17 \
 cat > build/MANIFEST.MF <<MF
 Premain-Class: arautoconnect.Agent
 Implementation-Title: AudioRelay Auto-Connect
-Implementation-Version: 1.0.0
+Implementation-Version: 1.1.0
 MF
 # fixed timestamps so the jar is reproducible
 jar --create --file dist/audiorelay-autoconnect.jar --manifest build/MANIFEST.MF --date=2026-01-01T00:00:00Z -C build/classes .
