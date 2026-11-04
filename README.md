@@ -16,6 +16,10 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
 
 > Unofficial. Not affiliated with or endorsed by AudioRelay or its developer. Contains no AudioRelay code.
 
+> [!WARNING]
+> **This software was written and tested with the help of AI, and it runs inside another program on your computer.**
+> Please read [Before you install: a word of caution](#before-you-install-a-word-of-caution) first.
+
 ---
 
 ## Why this project exists
@@ -50,6 +54,39 @@ tens of lines. This add-on does exactly that from the outside. Its connect/retry
 and most of the rest of the code exists only because it has to *find* those pieces inside an obfuscated app.
 
 If you're the AudioRelay developer: please feel free to make this project obsolete. 🙂
+
+---
+
+## Before you install: a word of caution
+
+Be careful with any code you find on the internet, including this project. It's worth saying plainly what this
+project is and isn't:
+
+- **It's random code from the internet.** It comes from an individual, not a company, and there's no support
+  contract or guarantee behind it. Installing it means trusting whoever wrote it, and whoever can change it later.
+- **It was largely written by AI.** The reverse-engineering, the code, the installers and this README were produced
+  together with an AI (Anthropic's Claude). AI can write code that looks right and still has subtle bugs or security
+  problems, and it can state things with more confidence than they deserve.
+- **It was largely tested by AI, and only partly on real machines.** The tests were designed and run by AI, and an
+  independent AI review was done before release. That catches a lot, but it isn't the same as review by experienced
+  humans or long use by many people. See [Compatibility](#compatibility) for exactly what has been tried on real
+  hardware. Some setups haven't been.
+- **It runs inside AudioRelay**, with the same access to your computer that AudioRelay has, and it changes how
+  AudioRelay behaves. Code in that position deserves more scrutiny, not less.
+
+**If you're at all wary, don't just trust this repository. Instead:**
+
+1. **Read the source yourself.** It's small: the agent is two files in [`src/arautoconnect`](src/arautoconnect),
+   and each installer is one short script in [`installers/`](installers). Check that it does what this README says
+   and nothing else.
+2. **Build your own copy** from the source you reviewed (`./package.sh`, needs JDK 17+) instead of using the
+   release downloads.
+3. **Or have your own favorite AI write your own personal version.** Point it at this README (especially
+   [How it works](#how-it-works) and [How small the official change would be](#how-small-the-official-change-would-be)).
+   The idea is simple enough that you can get something you understand and control, without running anyone else's code.
+
+This project is offered in good faith, with everything public so it can be checked. But "you can check it" only
+helps if someone actually does. If you review it and find a problem, please [open an issue](../../issues).
 
 ---
 
