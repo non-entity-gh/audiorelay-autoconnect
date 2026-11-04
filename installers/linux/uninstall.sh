@@ -43,5 +43,10 @@ for d in ${APP_DIR:+"$APP_DIR"} $SYSTEM_DIRS; do
   found=1
 done
 rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/audiorelay-autoconnect.log"
+AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/audiorelay-autoconnect.desktop"
+if [ -f "$AUTOSTART" ] && grep -q 'X-AudioRelay-AutoConnect=true' "$AUTOSTART"; then
+  rm -f "$AUTOSTART"
+  echo "Removed the login autostart entry this add-on created."
+fi
 [ -n "$found" ] || echo "Auto-Connect isn't installed (or was installed with --app-dir: pass the same --app-dir here)."
 echo "Restart AudioRelay for the change to take effect."

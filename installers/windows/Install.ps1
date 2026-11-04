@@ -1,10 +1,12 @@
 # AudioRelay Auto-Connect installer for Windows. Easiest: double-click Install.bat
 # What it does: copies audiorelay-autoconnect.jar into AudioRelay's app folder and adds ONE line to
-# AudioRelay.cfg (a backup is saved first). Nothing is downloaded and nothing else is changed.
+# AudioRelay.cfg (a backup is saved first). If you say yes, it also turns on AudioRelay's own
+# "Launch on startup" setting. Nothing is downloaded and nothing else is changed.
 #   -Server 192.168.1.50   skip the prompt
 #   -NoPersistent          only connect at launch (retrying until the first success), never reconnect after
 #   -AppDir "D:\Apps\AudioRelay"   if AudioRelay isn't installed in the default place
-param([string]$Server = "", [switch]$NoPersistent, [string]$AppDir = "")
+#   -SkipStartup           don't offer to turn on AudioRelay's "Launch on startup" setting
+param([string]$Server = "", [switch]$NoPersistent, [string]$AppDir = "", [switch]$SkipStartup)
 
 $logFile = Join-Path $env:TEMP "audiorelay-autoconnect-install.log"
 function Pause-Exit($code) { Write-Host ""; Read-Host "Press Enter to close"; exit $code }
@@ -56,13 +58,39 @@ try {
         Pause-Exit 1
     }
 
+    # Offer to turn on AudioRelay's own "Launch on startup" setting. AudioRelay stores it as a value named
+    # "AudioRelay" under the Windows Run key (the same thing its Settings > Startup switch writes), so its
+    # settings page shows the change. Done here, before elevating, so it applies to YOUR user account.
+    if (-not $SkipStartup) {
+        $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+        $existing = $null
+        foreach ($k in @($runKey, "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run", "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run")) {
+            $v = (Get-ItemProperty -Path $k -Name "AudioRelay" -ErrorAction SilentlyContinue).AudioRelay
+            if ($v) { $existing = $v; break }
+        }
+        $exe = Join-Path (Split-Path -Parent $appDir) "AudioRelay.exe"
+        if ($existing) {
+            Write-Host "AudioRelay already launches on startup."
+        } elseif (Test-Path -LiteralPath $exe) {
+            $ans = Read-Host "AudioRelay isn't set to launch when Windows starts. Turn on its 'Launch on startup' setting? (y/n)"
+            if ($ans -match '^[yY]') {
+                $min = Read-Host "Start it minimized to the tray? (y/n)"
+                $value = '"' + $exe + '"'
+                if ($min -match '^[yY]') { $value += ' --minimized' }
+                if (-not (Test-Path -LiteralPath $runKey)) { New-Item -Path $runKey -Force | Out-Null }
+                New-ItemProperty -Path $runKey -Name "AudioRelay" -Value $value -PropertyType String -Force | Out-Null
+                Write-Host "Done. You can change this any time in AudioRelay's Settings > Startup."
+            }
+        }
+    }
+
     # Admin rights are needed only if the app folder isn't writable (e.g. Program Files)
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $writable = $true
     try { $probe = Join-Path $appDir ".autoconnect-write-test"; [IO.File]::WriteAllText($probe, ""); Remove-Item -LiteralPath $probe } catch { $writable = $false }
     if (-not $writable -and -not $isAdmin) {
         Write-Host "Asking for administrator permission (AudioRelay's folder needs it)..."
-        $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Server", "`"$Server`"", "-AppDir", "`"$appDir`"")
+        $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Server", "`"$Server`"", "-AppDir", "`"$appDir`"", "-SkipStartup")
         if ($NoPersistent) { $argList += "-NoPersistent" }
         Start-Process powershell.exe -Verb RunAs -ArgumentList $argList
         Stop-Transcript | Out-Null

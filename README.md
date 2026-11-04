@@ -115,7 +115,10 @@ of the computer running the AudioRelay **server**. Giving that computer a fixed/
 ### Windows
 1. Extract `audiorelay-autoconnect-windows.zip` (right-click > *Extract All*). Don't run it from inside the zip.
 2. Double-click **`Install.bat`**, approve the admin prompt (AudioRelay lives in Program Files), and enter the server's IP.
-3. Start AudioRelay (or reboot). Done. AudioRelay's own *Launch on startup* setting keeps working.
+3. If AudioRelay isn't already set to launch when Windows starts, the installer offers to turn on AudioRelay's own
+   *Launch on startup* setting for you (optionally minimized to the tray). It writes the same Windows startup entry that
+   AudioRelay's *Settings > Startup* switch does, so you can change it there any time.
+4. Start AudioRelay (or reboot). Done.
 
 Uninstall: double-click `Uninstall.bat`.
 
@@ -139,9 +142,11 @@ bash install.sh 192.168.1.50 --app-dir ~/apps/audiorelay # .tar.gz extracted som
 ```
 - **.deb / .tar.gz:** copies the add-on next to `audiorelay.jar` and adds one line to `lib/app/AudioRelay.cfg` (backup saved). Uses `sudo` only if that folder isn't writable by you.
 - **Flatpak:** adds a per-user `flatpak override` (one environment variable + read-only access to the add-on's folder). The Flatpak itself is untouched.
+- **Start at login:** AudioRelay has no startup setting on Linux, so the installer offers to add a standard
+  `~/.config/autostart` entry for it (skipped if you already have one). The uninstaller removes it only if the add-on created it.
 - **AUR package:** not supported automatically yet (it uses its own launcher). See *Manual setup* below.
 
-Uninstall: `bash uninstall.sh` (add `--app-dir ...` if you used it).
+Uninstall: `bash uninstall.sh` (add `--app-dir ...` if you used it). Add `--skip-startup` to the install command to skip the login question.
 
 ### After AudioRelay updates
 An AudioRelay update replaces its config, so auto-connect switches off. Run the installer again. If an update also
@@ -192,7 +197,7 @@ That's why one jar works on all three platforms.
 
 This runs inside AudioRelay, so you should know exactly what it does:
 
-- **What it changes.** Windows/Linux: copies one `.jar` next to AudioRelay's own and adds one line to `AudioRelay.cfg` (backup saved as `AudioRelay.cfg.bak-autoconnect`). macOS: a LaunchAgent plist, a launcher app in `~/Applications`, and the jar in `~/.audiorelay-autoconnect/`. Flatpak: a per-user override. The uninstallers remove what the installers added (on Windows the small logs in `%TEMP%` stay; Flatpak keeps a harmless "no access" entry for the deleted folder in its override file).
+- **What it changes.** Windows/Linux: copies one `.jar` next to AudioRelay's own and adds one line to `AudioRelay.cfg` (backup saved as `AudioRelay.cfg.bak-autoconnect`). Only if you say yes: on Windows it turns on AudioRelay's own *Launch on startup* setting (the `AudioRelay` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, which AudioRelay's settings control and which uninstalling leaves alone); on Linux it adds a login autostart entry. macOS: a LaunchAgent plist, a launcher app in `~/Applications`, and the jar in `~/.audiorelay-autoconnect/`. Flatpak: a per-user override. The uninstallers remove what the installers added (on Windows the small logs in `%TEMP%` stay; Flatpak keeps a harmless "no access" entry for the deleted folder in its override file).
 - **No network access of its own.** It never opens a connection. It only asks AudioRelay to connect to the one address you configured, exactly like clicking Connect. No telemetry, no update checks.
 - **Installers download nothing** and run nothing from the internet. They only copy files from the zip.
 - **Inert everywhere else.** The agent does nothing unless it's running inside AudioRelay (it checks for `audiorelay.jar` on the class path), so it can't affect other Java programs.
