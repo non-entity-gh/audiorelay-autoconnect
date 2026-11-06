@@ -31,6 +31,7 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
   - [How small the official change would be](#how-small-the-official-change-would-be)
 - [Before you install: a word of caution](#before-you-install-a-word-of-caution)
 - [Install](#install): [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [After AudioRelay updates](#after-audiorelay-updates)
+  - [Keeping AudioRelay running](#keeping-audiorelay-running-optional-windows)
 - [Options](#options)
   - [Manual setup (any platform)](#manual-setup-any-platform)
 - [Compatibility](#compatibility)
@@ -175,6 +176,13 @@ Uninstall: `bash uninstall.sh` (add `--app-dir ...` if you used it). Add `--skip
 ### After AudioRelay updates
 An AudioRelay update replaces its config, so auto-connect switches off. Run the installer again. If an update also
 changes AudioRelay's internals too much, the add-on logs it and does nothing, and AudioRelay runs normally.
+
+### Keeping AudioRelay running (optional, Windows)
+Auto-connect brings the connection back after a network drop, but it can't help if AudioRelay itself crashes. For a
+machine you never touch, pair it with [Restart on Crash](https://w-shadow.com/blog/2009/03/04/restart-on-crash/), a small
+portable Windows tool that relaunches an application when it crashes or hangs. Add `AudioRelay.exe` to its list and
+AudioRelay is restarted automatically, and this add-on reconnects it as soon as it's back. It's an unrelated third-party
+tool that I haven't audited, so the [word of caution](#before-you-install-a-word-of-caution) above applies to it too.
 
 ---
 
