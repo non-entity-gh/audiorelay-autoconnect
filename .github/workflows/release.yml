@@ -39,8 +39,9 @@ jobs:
       - name: Build and unit-test
         run: |
           ./build.sh
-          javac -cp build/classes -d build/test test/ArgsTest.java
+          javac -cp build/classes -d build/test test/ArgsTest.java test/DestroyGuardTest.java
           java -cp build/classes:build/test ArgsTest
+          java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -Xverify:all -cp build/classes:build/test DestroyGuardTest
       - name: Package
         run: ./package.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

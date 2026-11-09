@@ -34,6 +34,9 @@ import java.util.regex.Pattern;
  *   persistent=true|false reconnect after the connection drops (default true)
  *   interval=SECONDS      first retry delay; doubles on each failure up to 60 s (default 10)
  *   delay=SECONDS         wait after launch before the first attempt (default 3)
+ *   crashfix=true|false   stop AudioRelay from crashing when the audio output device disconnects
+ *                         mid-stream, e.g. Bluetooth earbuds put in their case (default true; see
+ *                         Scanner.injectDestroyGuard)
  *
  * When it reconnects, and when it deliberately doesn't:
  *   - Connection error / dropped connection (server rebooted, slept, network blip): reconnects.
@@ -47,7 +50,7 @@ import java.util.regex.Pattern;
  *   - No network access of its own: it only asks AudioRelay to connect to the address you configured.
  */
 public final class Agent {
-    public static final String VERSION = "1.1.0";
+    public static final String VERSION = "1.2.0";
     private static final String SELF = "arautoconnect/Agent";
     /** IPv4, IPv6 (optionally [bracketed] or with %zone) or hostname; must not start with '-'. */
     static final Pattern HOST_OK = Pattern.compile("[A-Za-z0-9\\[][A-Za-z0-9._:%\\[\\]-]{0,252}");
@@ -59,6 +62,8 @@ public final class Agent {
     static boolean persistent = true;
     static long intervalMs = 10_000;
     static long delayMs = 3_000;
+    static boolean crashFix = true;
+    private static final java.util.concurrent.atomic.AtomicInteger deadStreams = new java.util.concurrent.atomic.AtomicInteger();
 
     private static volatile String holderClass;      // internal names found by Scanner
     private static volatile String playerFieldName;
@@ -82,11 +87,8 @@ public final class Agent {
                     + " | Java " + System.getProperty("java.version") + " | " + System.getProperty("os.name")
                     + " | pid " + ProcessHandle.current().pid());
             parseArgs(args);
-            if (host == null) {
-                log("No valid host given (expected e.g. host=192.168.1.50). Auto-connect disabled.");
-                return;
-            }
-            log("Target " + host + ", persistent=" + persistent + ", interval=" + intervalMs / 1000 + "s");
+            log("Options: host=" + host + ", persistent=" + persistent + ", interval=" + intervalMs / 1000 + "s"
+                    + ", crashfix=" + crashFix);
 
             // Let our Scanner class use the JDK's internal ASM (java.base doesn't export it by default).
             Module base = Object.class.getModule();
@@ -95,6 +97,32 @@ public final class Agent {
 
             // Scanner is loaded via reflection only after the export, so a problem there can't block startup.
             Class<?> scanner = Class.forName("arautoconnect.Scanner");
+
+            if (crashFix) {
+                final String rtAudioJni = (String) scanner.getField("RTAUDIO_JNI").get(null);
+                final Method injectGuard = scanner.getMethod("injectDestroyGuard", byte[].class, String.class);
+                inst.addTransformer(new ClassFileTransformer() {
+                    @Override
+                    public byte[] transform(Module module, ClassLoader loader, String className,
+                                            Class<?> redefined, ProtectionDomain pd, byte[] bytes) {
+                        if (redefined != null || !rtAudioJni.equals(className)) return null;
+                        try {
+                            byte[] out = (byte[]) injectGuard.invoke(null, bytes, SELF);
+                            log("Hook installed in " + className + " (device-disconnect crash fix).");
+                            return out;
+                        } catch (Throwable t) {
+                            log("Could not install the device-disconnect crash fix: " + describe(t));
+                            return null;
+                        }
+                    }
+                });
+            }
+
+            if (host == null) {
+                log("No valid host given (expected e.g. host=192.168.1.50). Auto-connect disabled.");
+                return;
+            }
+
             long t0 = System.nanoTime();
             String[] found = (String[]) scanner.getMethod("scan", String.class).invoke(null, appJar);
             holderClass = found[0];
@@ -146,6 +174,20 @@ public final class Agent {
             t.start();
         } catch (Throwable t) {
             log("Could not start: " + t);
+        }
+    }
+
+    /**
+     * Called from the patched RtAudioJni.destroy() when it skipped tearing down an audio stream that had
+     * already died because its output device disappeared. Must never throw into AudioRelay.
+     */
+    public static void onDeadStream() {
+        try {
+            int n = deadStreams.incrementAndGet();
+            log("Audio output device disappeared (Bluetooth off, unplugged, ...). Skipped AudioRelay's native"
+                    + " stream teardown, which would have crashed it; a little native memory is left behind instead"
+                    + " (" + n + " so far this run). AudioRelay will report the error and the player will reconnect.");
+        } catch (Throwable ignored) {
         }
     }
 
@@ -365,6 +407,7 @@ public final class Agent {
                     case "persistent": persistent = !v.equalsIgnoreCase("false"); break;
                     case "interval": intervalMs = Math.min(3600, Math.max(2, Long.parseLong(v))) * 1000; break;
                     case "delay": delayMs = Math.min(600, Math.max(0, Long.parseLong(v))) * 1000; break;
+                    case "crashfix": crashFix = !v.equalsIgnoreCase("false"); break;
                     default: log("Ignoring unknown option '" + k + "'.");
                 }
             } catch (NumberFormatException e) {

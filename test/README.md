@@ -1,6 +1,10 @@
 # Tests
 
 - `ArgsTest.java`: option parsing/validation. Runs in CI.
+- `DestroyGuardTest.java`: the device-disconnect crash fix, tested on a stand-in for AudioRelay's `RtAudioJni` with
+  fake natives (enumeration-only, normal disconnect, dead stream). Runs in CI. With a real `audiorelay.jar` as argument it
+  also patches the real class and has the JVM verify it:
+  `java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -Xverify:all -cp build/classes:build/test DestroyGuardTest [/path/to/audiorelay.jar]`
 Compile first: `./build.sh && javac -cp build/classes -d build/test test/ScanTest.java && javac -cp /path/to/audiorelay.jar -d build/test test/E2E.java`
 
 - `ScanTest.java`: prints what the scanner finds in a real `audiorelay.jar`:

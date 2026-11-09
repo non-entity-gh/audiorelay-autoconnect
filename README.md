@@ -18,6 +18,11 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
 - **If the server ends the session on purpose** (its user disconnects you, or a premium limit such as
   multi-device or session length), it also stays disconnected. It never works around AudioRelay's
   free-tier limits. If you find AudioRelay useful, consider buying premium.
+- **Bonus: no more crash when your Bluetooth earbuds disconnect.** AudioRelay 0.27.5 on Windows dies with
+  *"Child process exited with code 1"* when the audio output device disappears mid-stream (earbuds back in
+  their case, a USB DAC unplugged, a headset going to sleep). Since v1.2.0 the add-on also fixes that: AudioRelay
+  shows its normal "audio device changed or was removed" error instead, and the player reconnects.
+  See [The device-disconnect crash fix](#the-device-disconnect-crash-fix).
 
 > Unofficial. Not affiliated with or endorsed by AudioRelay or its developer. Contains no AudioRelay code.
 
@@ -38,6 +43,7 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
 - [Security & transparency](#security--transparency)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
+- [The device-disconnect crash fix](#the-device-disconnect-crash-fix)
 - [Building](#building)
 - [Legal](#legal)
 - [Credits](#credits)
@@ -178,8 +184,9 @@ An AudioRelay update replaces its config, so auto-connect switches off. Run the 
 changes AudioRelay's internals too much, the add-on logs it and does nothing, and AudioRelay runs normally.
 
 ### Keeping AudioRelay running (optional, Windows)
-Auto-connect brings the connection back after a network drop, but it can't help if AudioRelay itself crashes. For a
-machine you never touch, pair it with [Restart on Crash](https://w-shadow.com/blog/2009/03/04/restart-on-crash/), a small
+Auto-connect brings the connection back after a network drop, and since v1.2.0 it also prevents the most common
+crash (an audio device disconnecting; see [below](#the-device-disconnect-crash-fix)). It can't help with any other
+crash, though. For a machine you never touch, pair it with [Restart on Crash](https://w-shadow.com/blog/2009/03/04/restart-on-crash/), a small
 portable Windows tool that relaunches an application when it crashes or hangs. Add `AudioRelay.exe` to its list and
 AudioRelay is restarted automatically, and this add-on reconnects it as soon as it's back. It's an unrelated third-party
 tool that I haven't audited, so the [word of caution](#before-you-install-a-word-of-caution) above applies to it too.
@@ -197,6 +204,7 @@ The installer sets `host=`. You can edit the option string (in `AudioRelay.cfg` 
 | `persistent=false` | `true` | Connect at launch (retrying until the server is reachable), but don't reconnect after a later drop |
 | `interval=SECONDS` | `10` | First retry delay; doubles after each failed attempt, up to 60 s |
 | `delay=SECONDS` | `3` | Wait after launch before the first attempt |
+| `crashfix=false` | `true` | Turn off the [device-disconnect crash fix](#the-device-disconnect-crash-fix) |
 
 Example: `-javaagent:$APPDIR/audiorelay-autoconnect.jar=host=192.168.1.50,persistent=false`
 
@@ -211,7 +219,7 @@ AudioRelay's `AudioRelay.cfg`, or through the `JAVA_TOOL_OPTIONS` environment va
 
 | Platform | AudioRelay | Status |
 |---|---|---|
-| Windows 10/11 | 0.27.5 | ✅ Confirmed working on a real two-PC setup |
+| Windows 10/11 | 0.27.5 | ✅ Confirmed working on a real two-PC setup (crash fix: being confirmed on real hardware) |
 | Linux (.tar.gz / .deb) | 0.27.5 | ✅ Tested by launching the real app with the add-on: it connected to a server |
 | macOS (Apple Silicon & Intel) | 0.27.5 | 🟡 Logic tested against the real macOS build; the login-item launch path hasn't been confirmed on a physical Mac yet. Reports welcome! |
 | Linux Flatpak | 0.27.5 | 🟡 Should work (same mechanism as macOS); not yet confirmed |
@@ -230,6 +238,7 @@ That's why one jar works on all three platforms.
 This runs inside AudioRelay, so you should know exactly what it does:
 
 - **What it changes.** Windows/Linux: copies one `.jar` next to AudioRelay's own and adds one line to `AudioRelay.cfg` (backup saved as `AudioRelay.cfg.bak-autoconnect`). Only if you say yes: on Windows it turns on AudioRelay's own *Launch on startup* setting (the `AudioRelay` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, which AudioRelay's settings control and which uninstalling leaves alone); on Linux it adds a login autostart entry. macOS: a LaunchAgent plist, a launcher app in `~/Applications`, and the jar in `~/.audiorelay-autoconnect/`. Flatpak: a per-user override. The uninstallers remove what the installers added (on Windows the small logs in `%TEMP%` stay; Flatpak keeps a harmless "no access" entry for the deleted folder in its override file).
+- **What it changes inside AudioRelay while it runs.** Two kinds of bytecode patch, both small and both only in memory (the app's files are never modified): one-line hooks that *report* events to the add-on (startup, player state changes), and the [device-disconnect crash fix](#the-device-disconnect-crash-fix), the only patch that changes behaviour, by skipping a native teardown call that would crash the process. Both are in [`Scanner.java`](src/arautoconnect/Scanner.java).
 - **No network access of its own.** It never opens a connection. It only asks AudioRelay to connect to the one address you configured, exactly like clicking Connect. No telemetry, no update checks.
 - **Installers download nothing** and run nothing from the internet. They only copy files from the zip.
 - **Inert everywhere else.** The agent does nothing unless it's running inside AudioRelay (it checks for `audiorelay.jar` on the class path), so it can't affect other Java programs.
@@ -241,7 +250,7 @@ This runs inside AudioRelay, so you should know exactly what it does:
   gh attestation verify audiorelay-autoconnect-windows.zip --repo non-entity-gh/audiorelay-autoconnect
   ```
   Or build it yourself with `./package.sh`. With JDK 17 (what CI uses) the jar and zips are byte-for-byte reproducible.
-- **Windows notes.** `Install.bat` runs PowerShell with `-ExecutionPolicy Bypass` for that one script only; it doesn't change your system policy. Some antivirus tools are wary of scripts that elevate themselves and of Java agents in general. If yours flags it, the source is about 700 lines in [`src/`](src/arautoconnect) and you can build it yourself.
+- **Windows notes.** `Install.bat` runs PowerShell with `-ExecutionPolicy Bypass` for that one script only; it doesn't change your system policy. Some antivirus tools are wary of scripts that elevate themselves and of Java agents in general. If yours flags it, the source is under 1,000 lines in [`src/`](src/arautoconnect) and you can build it yourself.
 
 **Logs** (overwritten each launch; contains only the server address and state changes):
 Windows `%TEMP%\audiorelay-autoconnect.log`, macOS `~/Library/Logs/audiorelay-autoconnect.log`,
@@ -260,6 +269,8 @@ Linux `~/.local/state/audiorelay-autoconnect.log` (Flatpak: `~/.var/app/net.audi
    including a Disconnect that completes in a few milliseconds, along with its reason (`user_requested`, `error`, …).
 5. A background thread posts the same `Connection(address)` event the Connect button posts when the Player is idle
    and should be connected. Retries back off from 10 s to 60 s.
+6. Separately, it patches `RtAudioJni.destroy()` so a disappearing output device no longer crashes AudioRelay
+   ([details](#the-device-disconnect-crash-fix)).
 
 It uses the bytecode library inside AudioRelay's bundled Java 17 runtime. If a future AudioRelay ships a much newer
 Java where that's unavailable, the add-on just switches itself off (and logs why) until it's updated.
@@ -275,6 +286,33 @@ Code: [`Agent.java`](src/arautoconnect/Agent.java) (behavior) and [`Scanner.java
 - **Stopped working after an AudioRelay update:** re-run the installer. If the log says it couldn't locate the internals, [open an issue](../../issues) with the log.
 - **macOS: auto-connect works only sometimes after login:** AudioRelay is probably also in *System Settings > General > Login Items*. Only one copy can run, so remove it there. The add-on's login item already starts it.
 - **macOS: "Picked up JAVA_TOOL_OPTIONS" in Console:** normal. That's the JVM announcing the add-on.
+- **Windows: "Child process exited with code 1" when your Bluetooth earbuds / headset disconnect:** that's AudioRelay's
+  own crash, fixed by v1.2.0 or later of the add-on. Make sure the log mentions "device-disconnect crash fix" after
+  AudioRelay starts. See [The device-disconnect crash fix](#the-device-disconnect-crash-fix).
+
+## The device-disconnect crash fix
+
+**The bug (AudioRelay's, not this add-on's):** on Windows, AudioRelay 0.27.5 crashes with the dialog
+*"AudioRelay.exe: Child process exited with code 1"* whenever the audio output device it is playing to disappears:
+Bluetooth earbuds put back in their case, a headset auto-sleeping, a USB sound card unplugged. It is a long-standing,
+widely reported problem (for example [this bug report](https://community.audiorelay.net/t/crash-with-child-process-exited-with-code-1-exception-access-violation-in-native-rtaudio-dll-when-bluetooth-audio-device-disconnects/4181)
+on the AudioRelay forum, with crash logs). The crash log shows what happens: AudioRelay notices the dead stream and
+throws its own, handled `StreamNotRunningException` ("The audio device changed or was removed"), but its cleanup then
+calls `RtAudioJni.destroy()`, which tears down the half-dead native audio stream, and that faults inside
+`native-rtaudio.dll` (`EXCEPTION_ACCESS_VIOLATION`). A fault in native code kills the whole Java process, so
+AudioRelay's error handling never gets to run.
+
+**The fix:** the add-on patches AudioRelay's `RtAudioJni.destroy()` so that when an output stream was opened but is
+no longer running, the two native teardown calls are skipped. That one small native object is left behind
+(a leak of a few kilobytes per disconnect) instead of a crash. Every other call to `destroy()` is untouched: listing
+devices and normal disconnects tear down exactly as before. AudioRelay then shows its normal
+*"audio device changed or was removed"* error, stops the player with reason `error`, and the add-on reconnects, so the
+player comes back on your other output (or keeps retrying until the earbuds return, if they are the selected device).
+
+The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*.
+`RtAudioJni` is one of the few classes AudioRelay doesn't obfuscate, so the patch targets it by name; if it doesn't look
+as expected (a future version), the fix switches itself off and logs why. Turn it off with `crashfix=false`.
+It's exercised by [`test/DestroyGuardTest.java`](test/DestroyGuardTest.java) (runs in CI, no AudioRelay needed).
 
 ## Building
 ```bash

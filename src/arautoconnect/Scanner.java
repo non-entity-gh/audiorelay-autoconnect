@@ -14,6 +14,7 @@ import jdk.internal.org.objectweb.asm.ClassReader;
 import jdk.internal.org.objectweb.asm.ClassVisitor;
 import jdk.internal.org.objectweb.asm.ClassWriter;
 import jdk.internal.org.objectweb.asm.FieldVisitor;
+import jdk.internal.org.objectweb.asm.Label;
 import jdk.internal.org.objectweb.asm.MethodVisitor;
 import jdk.internal.org.objectweb.asm.Opcodes;
 
@@ -211,6 +212,112 @@ public final class Scanner {
                 };
             }
         }, 0);
+        return cw.toByteArray();
+    }
+
+    /** AudioRelay's JNI wrapper around the RtAudio library (Windows audio output); not obfuscated. */
+    public static final String RTAUDIO_JNI = "com/azefsw/audioconnect/audio/RtAudioJni";
+
+    /**
+     * Works around AudioRelay's crash when the audio output device disappears mid-stream (Bluetooth
+     * earbuds put in their case, a USB DAC unplugged, ...). AudioRelay notices the stopped stream and
+     * throws StreamNotRunningException (handled), but its cleanup then calls destroy() on the half-torn-down
+     * native stream, which faults inside native-rtaudio.dll and takes the whole JVM down ("Child process
+     * exited with code 1").
+     *
+     * The patch: in destroy(), when an output stream was opened (callbackDataPointer != -1) and the stream
+     * is no longer running, skip the two native teardown calls (and leak that one small native object)
+     * instead of crashing. Every other call to destroy() is unchanged: device enumeration instances
+     * (no stream opened) and normal disconnects (stream still running) tear down exactly as before.
+     *
+     * Implemented as two private helper methods added to the class plus a flag field; the two native
+     * invocations inside destroy() are redirected to the helpers.
+     */
+    public static byte[] injectDestroyGuard(byte[] bytes, String hookOwner) {
+        ClassReader cr = new ClassReader(bytes);
+        final String self = cr.getClassName();
+        if (!self.equals(RTAUDIO_JNI)) throw new IllegalArgumentException("not RtAudioJni: " + self);
+        final boolean[] seen = new boolean[3];   // destroy()V present, destroy(J) redirected, destroyOutputCallbackData(J) redirected
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        cr.accept(new ClassVisitor(API, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!"destroy".equals(name) || !"()V".equals(desc)) return mv;
+                seen[0] = true;
+                return new MethodVisitor(API, mv) {
+                    @Override
+                    public void visitMethodInsn(int op, String owner, String mname, String mdesc, boolean itf) {
+                        if (owner.equals(self) && "(J)V".equals(mdesc) && "destroy".equals(mname)) {
+                            seen[1] = true;
+                            super.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "arDestroy", "(J)V", false);
+                        } else if (owner.equals(self) && "(J)V".equals(mdesc) && "destroyOutputCallbackData".equals(mname)) {
+                            seen[2] = true;
+                            super.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "arDestroyCallbackData", "(J)V", false);
+                        } else {
+                            super.visitMethodInsn(op, owner, mname, mdesc, itf);
+                        }
+                    }
+                };
+            }
+
+            @Override
+            public void visitEnd() {
+                cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_VOLATILE, "arDeadStream", "Z", null, null).visitEnd();
+
+                // private void arDestroy(long ptr) {
+                //     if (callbackDataPointer != -1 && !isStreamRunning(ptr)) { arDeadStream = true; Agent.onDeadStream(); return; }
+                //     destroy(ptr);
+                // }
+                MethodVisitor m = cw.visitMethod(Opcodes.ACC_PRIVATE, "arDestroy", "(J)V", null, null);
+                m.visitCode();
+                Label doIt = new Label();
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitFieldInsn(Opcodes.GETFIELD, self, "callbackDataPointer", "J");
+                m.visitLdcInsn(Long.valueOf(-1L));
+                m.visitInsn(Opcodes.LCMP);
+                m.visitJumpInsn(Opcodes.IFEQ, doIt);
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitVarInsn(Opcodes.LLOAD, 1);
+                m.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "isStreamRunning", "(J)Z", false);
+                m.visitJumpInsn(Opcodes.IFNE, doIt);
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitInsn(Opcodes.ICONST_1);
+                m.visitFieldInsn(Opcodes.PUTFIELD, self, "arDeadStream", "Z");
+                m.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, "onDeadStream", "()V", false);
+                m.visitInsn(Opcodes.RETURN);
+                m.visitLabel(doIt);
+                m.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitVarInsn(Opcodes.LLOAD, 1);
+                m.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "destroy", "(J)V", false);
+                m.visitInsn(Opcodes.RETURN);
+                m.visitMaxs(0, 0);
+                m.visitEnd();
+
+                // private void arDestroyCallbackData(long ptr) { if (!arDeadStream) destroyOutputCallbackData(ptr); }
+                m = cw.visitMethod(Opcodes.ACC_PRIVATE, "arDestroyCallbackData", "(J)V", null, null);
+                m.visitCode();
+                Label skip = new Label();
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitFieldInsn(Opcodes.GETFIELD, self, "arDeadStream", "Z");
+                m.visitJumpInsn(Opcodes.IFNE, skip);
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitVarInsn(Opcodes.LLOAD, 1);
+                m.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "destroyOutputCallbackData", "(J)V", false);
+                m.visitLabel(skip);
+                m.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                m.visitInsn(Opcodes.RETURN);
+                m.visitMaxs(0, 0);
+                m.visitEnd();
+
+                super.visitEnd();
+            }
+        }, 0);
+        if (!seen[0] || !seen[1] || !seen[2]) {
+            throw new IllegalStateException("RtAudioJni.destroy() doesn't look as expected (found destroy()="
+                    + seen[0] + ", destroy(J)=" + seen[1] + ", destroyOutputCallbackData(J)=" + seen[2] + ")");
+        }
         return cw.toByteArray();
     }
 
