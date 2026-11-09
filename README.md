@@ -307,7 +307,9 @@ no longer running, the two native teardown calls are skipped. That one small nat
 (a leak of a few kilobytes per disconnect) instead of a crash. Every other call to `destroy()` is untouched: listing
 devices and normal disconnects tear down exactly as before. AudioRelay then shows its normal
 *"audio device changed or was removed"* error, stops the player with reason `error`, and the add-on reconnects, so the
-player comes back on your other output (or keeps retrying until the earbuds return, if they are the selected device).
+player comes back on another output. Which one: AudioRelay picks the output device you selected in the Player tab if
+it's present, otherwise the Windows default device (otherwise the first one listed), so with the earbuds gone it plays
+on whatever Windows switched to (usually your speakers).
 
 The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*.
 `RtAudioJni` is one of the few classes AudioRelay doesn't obfuscate, so the patch targets it by name; if it doesn't look
