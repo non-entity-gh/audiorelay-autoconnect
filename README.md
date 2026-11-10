@@ -302,16 +302,23 @@ calls `RtAudioJni.destroy()`, which tears down the half-dead native audio stream
 `native-rtaudio.dll` (`EXCEPTION_ACCESS_VIOLATION`). A fault in native code kills the whole Java process, so
 AudioRelay's error handling never gets to run.
 
-**The fix:** the add-on patches AudioRelay's `RtAudioJni.destroy()` so that when an output stream was opened but is
-no longer running, the two native teardown calls are skipped. That one small native object is left behind
-(a leak of a few kilobytes per disconnect) instead of a crash. Every other call to `destroy()` is untouched: listing
+There is usually a second crash right behind the first: AudioRelay immediately reopens the output on the device that
+just vanished. That open fails inside RtAudio (*"device ID was not found"* or *"Unable to retrieve device handle"*),
+and RtAudio's WASAPI code leaves the stream half-initialized: it is marked open but has no audio handle. Deleting it
+then dereferences that null handle (`native-rtaudio.dll+0xf5f1` in 0.27.5), which takes the process down just the same.
+
+**The fix:** the add-on patches AudioRelay's `RtAudioJni` so that `destroy()` skips its native teardown calls when
+the output stream was opened but is no longer running, or when the native open itself failed on that instance. That
+one small native object is left behind (a leak of a few kilobytes per disconnect) instead of a crash. Every other call to `destroy()` is untouched: listing
 devices and normal disconnects tear down exactly as before. AudioRelay then shows its normal
 *"audio device changed or was removed"* error, stops the player with reason `error`, and the add-on reconnects, so the
 player comes back on another output. Which one: AudioRelay picks the output device you selected in the Player tab if
 it's present, otherwise the Windows default device (otherwise the first one listed), so with the earbuds gone it plays
 on whatever Windows switched to (usually your speakers).
 
-The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*.
+The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*
+for the first case and *"Audio device couldn't be opened … Skipped AudioRelay's teardown of the half-opened native
+stream"* for the second; one disconnect often logs both.
 `RtAudioJni` is one of the few classes AudioRelay doesn't obfuscate, so the patch targets it by name; if it doesn't look
 as expected (a future version), the fix switches itself off and logs why. Turn it off with `crashfix=false`.
 It's exercised by [`test/DestroyGuardTest.java`](test/DestroyGuardTest.java) (runs in CI, no AudioRelay needed).

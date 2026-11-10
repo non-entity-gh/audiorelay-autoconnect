@@ -26,13 +26,19 @@ public class DestroyGuardTest {
         "public final class RtAudioJni {",
         "  public static java.util.List<String> calls = new java.util.ArrayList<>();",
         "  public static boolean streamRunning = true;",
+        "  public static boolean openFails = false;",
+        "  public static boolean halfOpen = false;",
         "  private volatile long rtAudioPointer = -1L;",
         "  private volatile long callbackDataPointer = -1L;",
         "  public void init() { rtAudioPointer = 100L; }",
-        "  public void open() { callbackDataPointer = 200L; }",
+        "  public void open() { callbackDataPointer = openOutputStream(rtAudioPointer, 7); }",
+        // like RtApiWasapi::probeDeviceOpen failing early: the native object is left half-initialized
+        "  private long openOutputStream(long p, int x) { calls.add(\"openOutputStream(\" + p + \")\");",
+        "    if (openFails) { halfOpen = true; throw new IllegalStateException(\"RtAudioException: device ID was not found\"); }",
+        "    return 200L; }",
         "  private boolean isStreamRunning(long p) { calls.add(\"isStreamRunning(\" + p + \")\"); return streamRunning; }",
         "  private void destroy(long p) { calls.add(\"destroy(\" + p + \")\");",
-        "    if (!streamRunning && callbackDataPointer != -1L) throw new Error(\"EXCEPTION_ACCESS_VIOLATION in native-rtaudio.dll\"); }",
+        "    if ((!streamRunning && callbackDataPointer != -1L) || halfOpen) throw new Error(\"EXCEPTION_ACCESS_VIOLATION in native-rtaudio.dll\"); }",
         "  private void destroyOutputCallbackData(long p) { calls.add(\"destroyOutputCallbackData(\" + p + \")\"); }",
         "  public void destroy() {",
         "    if (rtAudioPointer != -1L) destroy(rtAudioPointer);",
@@ -67,14 +73,14 @@ public class DestroyGuardTest {
         j = fresh(patched);
         call(j, "init"); call(j, "open");
         call(j, "destroy");
-        expect(j, "running stream", "[isStreamRunning(100), destroy(100), destroyOutputCallbackData(200)]", -1L, -1L);
+        expect(j, "running stream", "[openOutputStream(100), isStreamRunning(100), destroy(100), destroyOutputCallbackData(200)]", -1L, -1L);
 
         // 3. the crash case: device disappeared, stream dead -> both native calls skipped, no crash
         j = fresh(patched);
         call(j, "init"); call(j, "open");
         j.getClass().getField("streamRunning").set(null, false);
         call(j, "destroy");
-        expect(j, "dead stream (device removed)", "[isStreamRunning(100)]", -1L, -1L);
+        expect(j, "dead stream (device removed)", "[openOutputStream(100), isStreamRunning(100)]", -1L, -1L);
 
         // 3b. and the unpatched class really does blow up in that case (so the test tests something)
         j = fresh(original);
@@ -87,6 +93,51 @@ public class DestroyGuardTest {
             if (!(e.getCause() instanceof Error)) fail("unexpected: " + e.getCause());
             else System.out.println("ok: unpatched class fails as expected: " + e.getCause().getMessage());
         }
+
+        // 5. the second crash: AudioRelay reopens on the device that just vanished, the native open fails
+        //    and leaves a half-initialized stream (callbackDataPointer stays -1) -> teardown skipped, no crash
+        j = fresh(patched);
+        j.getClass().getField("openFails").set(null, true);
+        call(j, "init");
+        try { call(j, "open"); fail("open did not fail"); } catch (java.lang.reflect.InvocationTargetException e) { /* expected */ }
+        call(j, "destroy");
+        expect(j, "failed open (device vanished during reopen)", "[openOutputStream(100)]", -1L, -1L);
+
+        // 5b. the unpatched class crashes there
+        j = fresh(original);
+        j.getClass().getField("openFails").set(null, true);
+        call(j, "init");
+        try { call(j, "open"); } catch (java.lang.reflect.InvocationTargetException e) { /* expected */ }
+        try {
+            call(j, "destroy");
+            fail("unpatched failed-open destroy() did not fail");
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            System.out.println("ok: unpatched class fails after a failed open: " + e.getCause().getMessage());
+        }
+
+        // 6. the same instance used again after a skipped teardown tears down normally (flags are reset)
+        j = fresh(patched);
+        j.getClass().getField("openFails").set(null, true);
+        call(j, "init");
+        try { call(j, "open"); } catch (java.lang.reflect.InvocationTargetException e) { /* expected */ }
+        call(j, "destroy");
+        j.getClass().getField("openFails").set(null, false);
+        j.getClass().getField("halfOpen").set(null, false);
+        j.getClass().getField("calls").set(null, new ArrayList<String>());
+        call(j, "init"); call(j, "open");
+        call(j, "destroy");
+        expect(j, "reused after failed open", "[openOutputStream(100), isStreamRunning(100), destroy(100), destroyOutputCallbackData(200)]", -1L, -1L);
+
+        // 7. a dead stream followed by a normal session on the same instance also tears down fully
+        j = fresh(patched);
+        call(j, "init"); call(j, "open");
+        j.getClass().getField("streamRunning").set(null, false);
+        call(j, "destroy");
+        j.getClass().getField("streamRunning").set(null, true);
+        j.getClass().getField("calls").set(null, new ArrayList<String>());
+        call(j, "init"); call(j, "open");
+        call(j, "destroy");
+        expect(j, "reused after dead stream", "[openOutputStream(100), isStreamRunning(100), destroy(100), destroyOutputCallbackData(200)]", -1L, -1L);
 
         // 4. optional: patch the real class from an AudioRelay jar and let the JVM verify it
         if (args.length > 0) {
@@ -102,8 +153,10 @@ public class DestroyGuardTest {
                 Class<?> c = Class.forName(NAME, true, new Loader(realPatched, NAME, jarLoader));
                 int priv = 0;
                 for (Method m : c.getDeclaredMethods()) if (m.getName().startsWith("ar")) priv++;
-                if (priv != 2) fail("expected 2 helper methods in real class, found " + priv);
+                if (priv != 4) fail("expected 4 helper methods in real class (arDestroy, arDestroyCallbackData,"
+                        + " arOpenOutputStream, arOpenInputStream), found " + priv);
                 c.getDeclaredField("arDeadStream");
+                c.getDeclaredField("arOpenFailed");
                 System.out.println("ok: real RtAudioJni from " + args[0] + " patched and verified (" + realPatched.length + " bytes)");
             }
         }
@@ -116,6 +169,8 @@ public class DestroyGuardTest {
         Class<?> c = new Loader(bytes, NAME).loadClass(NAME);
         c.getField("calls").set(null, new ArrayList<String>());
         c.getField("streamRunning").set(null, true);
+        c.getField("openFails").set(null, false);
+        c.getField("halfOpen").set(null, false);
         return c.getConstructor().newInstance();
     }
 

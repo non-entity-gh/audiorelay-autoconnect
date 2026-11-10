@@ -191,6 +191,21 @@ public final class Agent {
         }
     }
 
+    /**
+     * Called from the patched RtAudioJni.destroy() when it skipped tearing down an audio stream whose native
+     * open had failed (typically: AudioRelay reopening the output on a device that just disappeared). RtAudio
+     * leaves such a stream half-initialized and deleting it crashes. Must never throw into AudioRelay.
+     */
+    public static void onFailedOpen() {
+        try {
+            int n = deadStreams.incrementAndGet();
+            log("Audio device couldn't be opened (it probably just disappeared). Skipped AudioRelay's teardown of the"
+                    + " half-opened native stream, which would have crashed it; a little native memory is left behind"
+                    + " instead (" + n + " so far this run). AudioRelay will report the error and the player will reconnect.");
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** Called by AudioRelay's state machine on every Player state change. Must be fast and never throw. */
     public static void onState(Object state) {
         try {

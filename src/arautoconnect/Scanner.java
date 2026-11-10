@@ -6,7 +6,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -17,6 +19,7 @@ import jdk.internal.org.objectweb.asm.FieldVisitor;
 import jdk.internal.org.objectweb.asm.Label;
 import jdk.internal.org.objectweb.asm.MethodVisitor;
 import jdk.internal.org.objectweb.asm.Opcodes;
+import jdk.internal.org.objectweb.asm.Type;
 
 /**
  * Everything that touches bytecode lives here, using the copy of ASM that ships inside the JDK.
@@ -225,25 +228,62 @@ public final class Scanner {
      * native stream, which faults inside native-rtaudio.dll and takes the whole JVM down ("Child process
      * exited with code 1").
      *
-     * The patch: in destroy(), when an output stream was opened (callbackDataPointer != -1) and the stream
-     * is no longer running, skip the two native teardown calls (and leak that one small native object)
-     * instead of crashing. Every other call to destroy() is unchanged: device enumeration instances
-     * (no stream opened) and normal disconnects (stream still running) tear down exactly as before.
+     * The device going away usually crashes AudioRelay twice over, and the patch covers both:
      *
-     * Implemented as two private helper methods added to the class plus a flag field; the two native
-     * invocations inside destroy() are redirected to the helpers.
+     *  1. The running stream dies. destroy() on it faults. -> When an output stream was opened
+     *     (callbackDataPointer != -1) and is no longer running, skip the two native teardown calls.
+     *  2. AudioRelay immediately reopens the stream on the device ID that just vanished. RtAudio's
+     *     RtApiWasapi::probeDeviceOpen marks the stream STOPPED as its first step but allocates the WASAPI
+     *     handle much later, and its early failures ("device ID was not found", "Unable to retrieve device
+     *     handle", ...) return in between. The native object is then left "not closed" with a NULL handle,
+     *     and deleting it faults in closeStream() (native-rtaudio.dll+0xf5f1 in AudioRelay 0.27.5).
+     *     -> When the native openOutputStream/openInputStream call threw on this instance, skip the
+     *     native teardown too.
+     *
+     * Either way one small native object is leaked instead of crashing. Every other call to destroy()
+     * is unchanged: device enumeration instances (nothing opened) and normal disconnects (stream still
+     * running) tear down exactly as before.
+     *
+     * Implemented as private helper methods and two flag fields added to the class: the two native
+     * invocations inside destroy() and the native open calls are redirected to the helpers.
      */
     public static byte[] injectDestroyGuard(byte[] bytes, String hookOwner) {
         ClassReader cr = new ClassReader(bytes);
         final String self = cr.getClassName();
         if (!self.equals(RTAUDIO_JNI)) throw new IllegalArgumentException("not RtAudioJni: " + self);
-        final boolean[] seen = new boolean[3];   // destroy()V present, destroy(J) redirected, destroyOutputCallbackData(J) redirected
+
+        // The private open natives (the public wrappers with the same names are left alone).
+        final Map<String, String> opens = new LinkedHashMap<>();   // name -> desc
+        cr.accept(new ClassVisitor(API) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                if ((access & Opcodes.ACC_PRIVATE) != 0 && desc.startsWith("(J")
+                        && ("openOutputStream".equals(name) || "openInputStream".equals(name))) opens.put(name, desc);
+                return null;
+            }
+        }, ClassReader.SKIP_CODE);
+
+        final boolean[] seen = new boolean[4];   // destroy()V present, destroy(J) redirected, destroyOutputCallbackData(J) redirected, openOutputStream redirected
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
         cr.accept(new ClassVisitor(API, cw) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                if (!"destroy".equals(name) || !"()V".equals(desc)) return mv;
+                if (!"destroy".equals(name) || !"()V".equals(desc)) {
+                    // everywhere else: route calls to the private open natives through arOpen*
+                    return new MethodVisitor(API, mv) {
+                        @Override
+                        public void visitMethodInsn(int op, String owner, String mname, String mdesc, boolean itf) {
+                            if (owner.equals(self) && mdesc.equals(opens.get(mname))) {
+                                if ("openOutputStream".equals(mname)) seen[3] = true;
+                                super.visitMethodInsn(Opcodes.INVOKESPECIAL, self, "ar" + Character.toUpperCase(mname.charAt(0))
+                                        + mname.substring(1), mdesc, false);
+                            } else {
+                                super.visitMethodInsn(op, owner, mname, mdesc, itf);
+                            }
+                        }
+                    };
+                }
                 seen[0] = true;
                 return new MethodVisitor(API, mv) {
                     @Override
@@ -264,14 +304,59 @@ public final class Scanner {
             @Override
             public void visitEnd() {
                 cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_VOLATILE, "arDeadStream", "Z", null, null).visitEnd();
+                cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_VOLATILE, "arOpenFailed", "Z", null, null).visitEnd();
+
+                // private <ret> arOpenOutputStream(<same args>) {        (likewise arOpenInputStream)
+                //     arOpenFailed = true;                                // stays set if the native call throws
+                //     <ret> r = openOutputStream(<args>);
+                //     arOpenFailed = false;
+                //     return r;
+                // }
+                for (Map.Entry<String, String> o : opens.entrySet()) {
+                    String n = o.getKey(), d = o.getValue();
+                    MethodVisitor m = cw.visitMethod(Opcodes.ACC_PRIVATE,
+                            "ar" + Character.toUpperCase(n.charAt(0)) + n.substring(1), d, null, null);
+                    m.visitCode();
+                    m.visitVarInsn(Opcodes.ALOAD, 0);
+                    m.visitInsn(Opcodes.ICONST_1);
+                    m.visitFieldInsn(Opcodes.PUTFIELD, self, "arOpenFailed", "Z");
+                    m.visitVarInsn(Opcodes.ALOAD, 0);
+                    int slot = 1;
+                    for (Type t : Type.getArgumentTypes(d)) { m.visitVarInsn(t.getOpcode(Opcodes.ILOAD), slot); slot += t.getSize(); }
+                    m.visitMethodInsn(Opcodes.INVOKESPECIAL, self, n, d, false);
+                    m.visitVarInsn(Opcodes.ALOAD, 0);
+                    m.visitInsn(Opcodes.ICONST_0);
+                    m.visitFieldInsn(Opcodes.PUTFIELD, self, "arOpenFailed", "Z");
+                    m.visitInsn(Type.getReturnType(d).getOpcode(Opcodes.IRETURN));
+                    m.visitMaxs(0, 0);
+                    m.visitEnd();
+                }
 
                 // private void arDestroy(long ptr) {
+                //     arDeadStream = false;
+                //     if (arOpenFailed) { arOpenFailed = false; arDeadStream = true; Agent.onFailedOpen(); return; }
                 //     if (callbackDataPointer != -1 && !isStreamRunning(ptr)) { arDeadStream = true; Agent.onDeadStream(); return; }
                 //     destroy(ptr);
                 // }
                 MethodVisitor m = cw.visitMethod(Opcodes.ACC_PRIVATE, "arDestroy", "(J)V", null, null);
                 m.visitCode();
-                Label doIt = new Label();
+                Label doIt = new Label(), notFailed = new Label();
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitInsn(Opcodes.ICONST_0);
+                m.visitFieldInsn(Opcodes.PUTFIELD, self, "arDeadStream", "Z");
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitFieldInsn(Opcodes.GETFIELD, self, "arOpenFailed", "Z");
+                m.visitJumpInsn(Opcodes.IFEQ, notFailed);
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitInsn(Opcodes.ICONST_0);
+                m.visitFieldInsn(Opcodes.PUTFIELD, self, "arOpenFailed", "Z");
+                m.visitVarInsn(Opcodes.ALOAD, 0);
+                m.visitInsn(Opcodes.ICONST_1);
+                m.visitFieldInsn(Opcodes.PUTFIELD, self, "arDeadStream", "Z");
+                m.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, "onFailedOpen", "()V", false);
+                m.visitInsn(Opcodes.RETURN);
+                m.visitLabel(notFailed);
+                m.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
                 m.visitVarInsn(Opcodes.ALOAD, 0);
                 m.visitFieldInsn(Opcodes.GETFIELD, self, "callbackDataPointer", "J");
                 m.visitLdcInsn(Long.valueOf(-1L));
@@ -314,9 +399,10 @@ public final class Scanner {
                 super.visitEnd();
             }
         }, 0);
-        if (!seen[0] || !seen[1] || !seen[2]) {
-            throw new IllegalStateException("RtAudioJni.destroy() doesn't look as expected (found destroy()="
-                    + seen[0] + ", destroy(J)=" + seen[1] + ", destroyOutputCallbackData(J)=" + seen[2] + ")");
+        if (!seen[0] || !seen[1] || !seen[2] || !seen[3]) {
+            throw new IllegalStateException("RtAudioJni doesn't look as expected (found destroy()="
+                    + seen[0] + ", destroy(J)=" + seen[1] + ", destroyOutputCallbackData(J)=" + seen[2]
+                    + ", openOutputStream call=" + seen[3] + ")");
         }
         return cw.toByteArray();
     }
