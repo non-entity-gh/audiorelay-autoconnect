@@ -20,8 +20,8 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
   free-tier limits. If you find AudioRelay useful, consider buying premium.
 - **Bonus: no more crash when your Bluetooth earbuds disconnect.** AudioRelay 0.27.5 on Windows dies with
   *"Child process exited with code 1"* when the audio output device disappears mid-stream (earbuds back in
-  their case, a USB DAC unplugged, a headset going to sleep). Since v1.2.0 the add-on also fixes that: AudioRelay
-  shows its normal "audio device changed or was removed" error instead, and the player reconnects.
+  their case, a USB DAC unplugged, a headset going to sleep). Since v1.2.0 the add-on also fixes that: the audio
+  just moves to your next default device, and back to the earbuds as soon as they reconnect, with no error.
   See [The device-disconnect crash fix](#the-device-disconnect-crash-fix).
 
 > Unofficial. Not affiliated with or endorsed by AudioRelay or its developer. Contains no AudioRelay code.
@@ -310,11 +310,13 @@ then dereferences that null handle (`native-rtaudio.dll+0xf5f1` in 0.27.5), whic
 **The fix:** the add-on patches AudioRelay's `RtAudioJni` so that `destroy()` skips its native teardown calls when
 the output stream was opened but is no longer running, or when the native open itself failed on that instance. That
 one small native object is left behind (a leak of a few kilobytes per disconnect) instead of a crash. Every other call to `destroy()` is untouched: listing
-devices and normal disconnects tear down exactly as before. AudioRelay then shows its normal
-*"audio device changed or was removed"* error, stops the player with reason `error`, and the add-on reconnects, so the
-player comes back on another output. Which one: AudioRelay picks the output device you selected in the Player tab if
-it's present, otherwise the Windows default device (otherwise the first one listed), so with the earbuds gone it plays
-on whatever Windows switched to (usually your speakers).
+devices and normal disconnects tear down exactly as before.
+
+With the crash out of the way, AudioRelay's own device handling takes over and does what it was always meant to: the
+stream moves straight to the next output, with no error shown and no reconnect needed. AudioRelay picks the output
+device you selected in the Player tab if it's present, otherwise the Windows default device (otherwise the first one
+listed), so with the earbuds gone it plays on whatever Windows switched to (usually your speakers). Put the earbuds
+back in and it switches straight back to them. Tested on Windows 11 with AirPods over many disconnect/reconnect cycles.
 
 The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*
 for the first case and *"Audio device couldn't be opened … Skipped AudioRelay's teardown of the half-opened native
