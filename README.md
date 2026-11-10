@@ -20,8 +20,8 @@ If the server computer reboots or sleeps, you do it again. This small add-on doe
   free-tier limits. If you find AudioRelay useful, consider buying premium.
 - **Bonus: no more crash when your Bluetooth earbuds disconnect.** AudioRelay 0.27.5 on Windows dies with
   *"Child process exited with code 1"* when the audio output device disappears mid-stream (earbuds back in
-  their case, a USB DAC unplugged, a headset going to sleep). Since v1.2.0 the add-on also fixes that: the audio
-  just moves to your next default device, and back to the earbuds as soon as they reconnect, with no error.
+  their case, a USB DAC unplugged, a headset going to sleep). Since v1.2.0 the add-on also fixes that: after a cut-out
+  of about 5 seconds the audio moves to your next default device, and back to the earbuds when they reconnect, with no error.
   See [The device-disconnect crash fix](#the-device-disconnect-crash-fix).
 
 > Unofficial. Not affiliated with or endorsed by AudioRelay or its developer. Contains no AudioRelay code.
@@ -313,10 +313,10 @@ one small native object is left behind (a leak of a few kilobytes per disconnect
 devices and normal disconnects tear down exactly as before.
 
 With the crash out of the way, AudioRelay's own device handling takes over and does what it was always meant to: the
-stream moves straight to the next output, with no error shown and no reconnect needed. AudioRelay picks the output
+stream moves to the next output after a cut-out of about 5 seconds, with no error shown and no reconnect needed. AudioRelay picks the output
 device you selected in the Player tab if it's present, otherwise the Windows default device (otherwise the first one
-listed), so with the earbuds gone it plays on whatever Windows switched to (usually your speakers). Put the earbuds
-back in and it switches straight back to them. Tested on Windows 11 with AirPods over many disconnect/reconnect cycles.
+listed), so with the earbuds gone it plays on whatever Windows switched to (usually your speakers). Take the earbuds
+out of the case again and it switches back to them. Tested on Windows 11 with AirPods over many disconnect/reconnect cycles.
 
 The log says when it kicked in: *"Audio output device disappeared … Skipped AudioRelay's native stream teardown"*
 for the first case and *"Audio device couldn't be opened … Skipped AudioRelay's teardown of the half-opened native
